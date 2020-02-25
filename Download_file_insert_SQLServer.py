@@ -4,9 +4,10 @@
 @Author: qi-you
 @Date: 2020-02-19 17:50:28
 @LastEditors: qi-you
-@LastEditTime: 2020-02-24 11:49:42
+@LastEditTime: 2020-02-25 15:32:22
 @Descripttion: 
 '''
+
 '''
 下载文件数据并筛选数据插入到数据库
     1、从url中获取文件
@@ -34,8 +35,9 @@
     (53) hpExpectedEndDate 对应 HP_Expected_End_Date
     （54） hpTerminationDate 对应 HP_Termination_Date
     （55） modifytimestamp 对应 Modify_Timestamp
-    
+
 '''
+
 import gzip
 import logging
 import sys
@@ -47,7 +49,6 @@ import requests
 import configparser
 import uuid
 from Encrpt import PrpCrypt
-
 url_pwd = None
 url_user = None
 user_name = None
@@ -66,15 +67,26 @@ def download_file(fileurl):
     global logger
     is_hp = 1
     data = []
+    
+    conn_info = "DRIVER={ODBC Driver 13 for SQL Server};DATABASE=MyTest;SERVER=.;UID=sa;PWD=206032410;"
+    cnxn = pyodbc.connect(conn_info)
+    cursor = cnxn.cursor()
+    truncate(cursor)
     for url in fileurl:
         f = urllib.request.urlopen(url)
         open(f"download\\urlopen{is_hp}.zip",'wb').write(f.read())
-        gzr = gzip.open(f"download\\urlopen{is_hp}.zip",'r')
-        data = generated_sql(gzr,is_hp)
-        insert_sql(data,is_hp)
+        gzr = gzip.open(f"download\\urlopen{is_hp}.zip", 'r')
+        data = generated_sql(gzr, is_hp)
+        insert_sql(data, is_hp,cursor)
         logger.info(f"total: {len(data)}")
         is_hp = 0
+    logger.info(f"compare data")
+    compare(cursor)
 
+def truncate(cursor):
+    logger.info(f"TRUNCATE TABLE ED_LZ_Employee")
+    cursor.execute("TRUNCATE TABLE ED_LZ_Employee")
+    cursor.commit()
 
 def generated_sql(r01, is1061):
     '''
@@ -88,13 +100,13 @@ def generated_sql(r01, is1061):
     for r in r01.readlines():
         file_data.append(r.decode("utf-8").split("\t"))
     r01.close()
-    logger.info(f"file row {len(file_data)}")
+    logger.info(f"file{is1061} row {len(file_data)}")
     for lin in file_data:
         column_value = []
         column_value.append(lin[0])
         column_value.append(lin[1])
         column_value.append(lin[4].replace(":", "\\"))
-        column_value.append(datetime.strptime(lin[5],'%Y-%m-%d'))
+        column_value.append(datetime.strptime(lin[5], '%Y-%m-%d'))
         column_value.append(lin[6])
         if is1061:
             column_value.append(lin[9].replace("'", "''"))
@@ -102,27 +114,26 @@ def generated_sql(r01, is1061):
                 lin[55] = None
                 column_value.append(lin[55])
             else:
-                column_value.append(datetime.strptime(lin[55],'%Y-%m-%d'))
-            column_value.append(datetime.strptime(lin[56],'%Y%m%d%H%M%SZ'))
+                column_value.append(datetime.strptime(lin[55], '%Y-%m-%d'))
+            column_value.append(datetime.strptime(lin[56], '%Y%m%d%H%M%SZ'))
         else:
             column_value.append(lin[8].replace("'", "''"))
             if lin[52] == '':
                 lin[52] = None
-                column_value.append(lin[52])    
+                column_value.append(lin[52])
             else:
-                column_value.append(datetime.strptime(lin[52],'%Y-%m-%d'))
+                column_value.append(datetime.strptime(lin[52], '%Y-%m-%d'))
             if lin[53] == '':
                 lin[53] = None
                 column_value.append(lin[53])
             else:
-                column_value.append(datetime.strptime(lin[53],'%Y-%m-%d'))
-            column_value.append(datetime.strptime(lin[54],'%Y%m%d%H%M%SZ'))
+                column_value.append(datetime.strptime(lin[53], '%Y-%m-%d'))
+            column_value.append(datetime.strptime(lin[54], '%Y%m%d%H%M%SZ'))
         insert_rows.append(column_value)
     return insert_rows
 
 
-
-def insert_sql(table,is_hp):
+def insert_sql(table, is_hp,cursor):
     '''
     @description: 插入数据库
     @param {list} 
@@ -134,24 +145,20 @@ def insert_sql(table,is_hp):
     sql = f"insert into [IT_OPS].[ED_LZ_Employee]({column}) values(?,?,?,?,?,?,{HP_Expected_End_Date},?,?,{is_hp},getdate())"
     conn_info = "DRIVER={ODBC Driver 13 for SQL Server};DATABASE="+database+";SERVER="+server_name+";UID=" + \
         user_name+";PWD="+user_password+";"
-    cnxn = pyodbc.connect(conn_info)
-    cursor = cnxn.cursor()
     cursor.fast_executemany = True
     # 批量插入
-    # try:
-    logger.info(f"insert into number {len(table)}")
-    logger.info("insert into [IT_OPS].[ED_LZ_Employee]........")
-    cursor.executemany(sql, table)
-    cursor.commit()
-    logger.info(f"Insertion successful number {len(table)}")
-    # except:
-    #     logger.info(f"Insertion error:insertion failed")
-    # finally:
-    #     cursor.close()
-    #     cnxn.close()
-    #     logger.info("Close the connection")
-
-
+    try:
+        logger.info(f"insert into number {len(table)}")
+        logger.info("insert into [IT_OPS].[ED_LZ_Employee]........")
+        cursor.executemany(sql, table)
+        cursor.commit()
+        logger.info(f"Insertion successful number {len(table)}")
+    except:
+        logger.info(f"Insertion error:insertion failed")
+    finally:
+        cursor.close()
+        cnxn.close()
+        logger.info("Close the connection")
 
 
 def getlogg(name):
@@ -212,9 +219,44 @@ def main():
     logger.info(f"Running time:{runtime}")
 
 
+def compare(cursor):
+    global logger
+    sql = f"insert into [ED_Dim_Employee] values(?,?,?,?,?,?,?,?,?,?,?)"
+    cursor.execute('''SELECT Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date
+                    FROM (
+                        SELECT * FROM ED_LZ_Employee
+                        UNION ALL
+                        SELECT * FROM ED_Dim_Employee
+                    ) tbl
+                    GROUP BY 
+                    Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date
+                    HAVING count(*) = 1
+                    ORDER BY Worker_ID;''')
+    newdata = list(cursor.fetchall())
+    if len(newdata)==0:
+        logger.info("no change")
+        return
+    change_worker_id = set()
+    lz_change = set()
+    for i in range(len(newdata)):
+        change_worker_id.add(newdata[i][0])
+    logger.info(f"change Worker_ID {str(change_worker_id)}")
+    cursor.execute(f'''select * from ED_LZ_Employee where Worker_ID in ('{"','".join(change_worker_id)}')''')
+    lz_compare = list(cursor.fetchall())
+    if len(lz_compare)>0:
+        for i in range(len(lz_compare)):
+            lz_change.add(lz_compare[i][0])
+        logger.info(f"delete ED_Dim_Employee Worker_ID{str(change_worker_id)}")
+        delete_dim = f'''delete ED_Dim_Employee where Worker_ID in ('{"','".join(list(change_worker_id))}')'''
+        cursor.execute(delete_dim)
+        logger.info(f"insert ED_Dim_Employee new Worker_ID{str(lz_compare)}")
+        cursor.executemany(sql,lz_compare)
+    else:
+        logger.info(f"delete ED_Dim_Employee Worker_ID{str(change_worker_id)}")
+        delete_dim = f'''delete ED_Dim_Employee where Worker_ID in ('{"','".join(list(change_worker_id))}')'''
+        cursor.execute(delete_dim)
+    cursor.commit()
 
 
 if __name__ == "__main__":
     main()
-    
-    

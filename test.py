@@ -237,19 +237,19 @@ def compare(cursor):
             logger.info("no change")
             return
         change_worker_id = set()
-        # lz_change = set()
+        lz_change = set()
         for i in range(len(newdata)):
             change_worker_id.add(newdata[i][0])
         logger.info(f"change Worker_ID {str(change_worker_id)}")
         cursor.execute(f'''select * from [IT_OPS].[ED_LZ_Employee] where Worker_ID in ('{"','".join(change_worker_id)}')''')
         lz_compare = list(cursor.fetchall())
         if len(lz_compare)>0:
-            # for i in range(len(lz_compare)):
-            #     lz_change.add(lz_compare[i][0])
-            logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(lz_compare)}")
-            delete_dim = f'''delete [IT_OPS].ED_Dim_Employee where Worker_ID in ('{"','".join(list(lz_compare))}')'''
+            for i in range(len(lz_compare)):
+                lz_change.add(lz_compare[i][0])
+            logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(lz_change)}")
+            delete_dim = f'''delete [IT_OPS].ED_Dim_Employee where Worker_ID in ('{"','".join(list(lz_change))}')'''
             cursor.execute(delete_dim)
-            logger.info(f"insert [IT_OPS].ED_Dim_Employee new Worker_ID{str(lz_compare)}")
+            logger.info(f"insert [IT_OPS].ED_Dim_Employee new Worker_ID{str(lz_change)}")
             cursor.executemany(sql,lz_compare)
         # else:
         #     logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(change_worker_id)}")

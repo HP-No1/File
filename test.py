@@ -4,7 +4,7 @@
 @Author: qi-you
 @Date: 2020-02-19 17:50:28
 @LastEditors: qi-you
-@LastEditTime: 2020-02-25 15:31:43
+@LastEditTime: 2020-02-27 10:32:25
 @Descripttion: 
 '''
 
@@ -47,7 +47,7 @@ import pyodbc
 import requests
 import configparser
 import uuid
-from Encrpt import PrpCrypt
+# from Encrpt import PrpCrypt
 url_pwd = None
 url_user = None
 user_name = None
@@ -66,7 +66,9 @@ def download_file(fileurl):
     global logger
     is_hp = 1
     data = []
-    conn_info = "DRIVER={ODBC Driver 17 for SQL Server};DATABASE="+database+";SERVER="+server_name+";UID="+user_name+";PWD="+user_password+";"
+    # conn_info = "DRIVER={ODBC Driver 17 for SQL Server};DATABASE="+database+";SERVER="+server_name+";UID="+user_name+";PWD="+user_password+";"
+    conn_info = "DRIVER={ODBC Driver 13 for SQL Server};DATABASE=MyTest;SERVER=.;UID=sa;PWD=206032410;"
+    cnxn = pyodbc.connect(conn_info)
     cnxn = pyodbc.connect(conn_info)
     cursor = cnxn.cursor()
     cursor.fast_executemany = True
@@ -82,10 +84,12 @@ def download_file(fileurl):
         is_hp = 0
     logger.info(f"compare data")
     compare(cursor)
+    cursor.close()
+    cnxn.close()
 
 def truncate(cursor):
     logger.info(f"TRUNCATE TABLE [IT_OPS].[ED_LZ_Employee]")
-    cursor.execute("delete [IT_OPS].[ED_LZ_Employee];")
+    cursor.execute("delete IT_OPS.[ED_LZ_Employee];")#-------------------------------------alter
     cursor.commit()
     logger.info(f"TRUNCATE TABLE [IT_OPS].[ED_LZ_Employee] successful")
 
@@ -154,8 +158,8 @@ def insert_sql(table, is_hp,cursor):
         logger.info(f"Insertion successful number {len(table)}")
     except:
         logger.info(f"Insertion error:insertion failed")
-    finally:
         cursor.close()
+    finally:
         logger.info("Close the connection")
 
 
@@ -237,26 +241,27 @@ def compare(cursor):
             logger.info("no change")
             return
         change_worker_id = set()
-        lz_change = set()
         for i in range(len(newdata)):
             change_worker_id.add(newdata[i][0])
         logger.info(f"change Worker_ID {str(change_worker_id)}")
-        cursor.execute(f'''select * from [IT_OPS].[ED_LZ_Employee] where Worker_ID in ('{"','".join(change_worker_id)}')''')
-        lz_compare = list(cursor.fetchall())
-        if len(lz_compare)>0:
-            for i in range(len(lz_compare)):
-                lz_change.add(lz_compare[i][0])
-            logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(lz_change)}")
-            delete_dim = f'''delete [IT_OPS].ED_Dim_Employee where Worker_ID in ('{"','".join(list(lz_change))}')'''
+        cursor.execute("select Worker_ID from [IT_OPS].ED_Dim_Employee where Worker_ID not in (select Worker_ID from [IT_OPS].ED_LZ_Employee)")
+        dim_delete_id = list(cursor.fetchall())
+        delete_id = set()
+        [delete_id.add(dim_delete_id[i][0]) for i in range(len(dim_delete_id))]
+        logger.info(f"lz delete Worker_ID{delete_id}")
+        alter_add_id = change_worker_id-delete_id
+        if len(alter_add_id)>0:
+            cursor.execute(f'''select * from [IT_OPS].[ED_LZ_Employee] where Worker_ID in ('{"','".join(alter_add_id)}')''')
+            lz_compare = list(cursor.fetchall())
+            logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(alter_add_id)}")
+            delete_dim = f'''delete [IT_OPS].ED_Dim_Employee where Worker_ID in ('{"','".join(alter_add_id)}')'''
             cursor.execute(delete_dim)
-            logger.info(f"insert [IT_OPS].ED_Dim_Employee new Worker_ID{str(lz_change)}")
+            logger.info(f"insert [IT_OPS].ED_Dim_Employee new Worker_ID{str(alter_add_id)}")
             cursor.executemany(sql,lz_compare)
-        # else:
-        #     logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(change_worker_id)}")
-        #     delete_dim = f'''delete [IT_OPS].ED_Dim_Employee where Worker_ID in ('{"','".join(list(change_worker_id))}')'''
-        #     cursor.execute(delete_dim)
         cursor.commit()
     else:
+        logger.info("[IT_OPS].ED_Dim_Employee no data")
+        logger.info("insert into [IT_OPS].ED_Dim_Employee select  * from [IT_OPS].[ED_LZ_Employee]")
         cursor.execute("insert into [IT_OPS].ED_Dim_Employee select  * from [IT_OPS].[ED_LZ_Employee]")
         cursor.commit()
         

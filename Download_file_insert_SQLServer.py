@@ -4,7 +4,7 @@
 @Author: qi-you
 @Date: 2020-02-19 17:50:28
 @LastEditors: qi-you
-@LastEditTime: 2020-02-25 15:32:22
+@LastEditTime: 2020-02-27 18:08:17
 @Descripttion: 
 '''
 
@@ -12,7 +12,8 @@
 下载文件数据并筛选数据插入到数据库
     1、从url中获取文件
     2、从文件中筛选选数据
-    3、插入数据库:全部插入(先删除全部数据再插入？)、更新插入
+    3、插入数据库:更新插入 dim表只增不删
+    4、归档文件功能？？（①、下载文件时添加时间戳）
     需要添加:使用用户名和账号密码连接
     文件一：1061
     （1）employeenumber对应：Worker_ID
@@ -35,7 +36,6 @@
     (53) hpExpectedEndDate 对应 HP_Expected_End_Date
     （54） hpTerminationDate 对应 HP_Termination_Date
     （55） modifytimestamp 对应 Modify_Timestamp
-
 '''
 
 import gzip
@@ -67,14 +67,19 @@ def download_file(fileurl):
     global logger
     is_hp = 1
     data = []
-    
+    # conn_info = "DRIVER={ODBC Driver 17 for SQL Server};DATABASE="+database+";SERVER="+server_name+";UID="+user_name+";PWD="+user_password+";"
     conn_info = "DRIVER={ODBC Driver 13 for SQL Server};DATABASE=MyTest;SERVER=.;UID=sa;PWD=206032410;"
     cnxn = pyodbc.connect(conn_info)
+    cnxn = pyodbc.connect(conn_info)
     cursor = cnxn.cursor()
+    cursor.fast_executemany = True
     truncate(cursor)
     for url in fileurl:
-        f = urllib.request.urlopen(url)
-        open(f"download\\urlopen{is_hp}.zip",'wb').write(f.read())
+        logger.info(f"download file{is_hp}")
+        # f = urllib.request.urlopen(url)
+        # nowtime = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        # open(f"download\\urlopen{is_hp}_{nowtime}.zip",'wb').write(f.read())
+        # gzr = gzip.open(f"download\\urlopen{is_hp}_{nowtime}.zip", 'r')
         gzr = gzip.open(f"download\\urlopen{is_hp}.zip", 'r')
         data = generated_sql(gzr, is_hp)
         insert_sql(data, is_hp,cursor)
@@ -82,11 +87,15 @@ def download_file(fileurl):
         is_hp = 0
     logger.info(f"compare data")
     compare(cursor)
+    cursor.close()
+    cnxn.close()
 
 def truncate(cursor):
-    logger.info(f"TRUNCATE TABLE ED_LZ_Employee")
-    cursor.execute("TRUNCATE TABLE ED_LZ_Employee")
+    logger.info(f"TRUNCATE TABLE [IT_OPS].[ED_LZ_Employee]")
+    cursor.execute("delete IT_OPS.[ED_LZ_Employee];")
     cursor.commit()
+    logger.info(f"TRUNCATE TABLE [IT_OPS].[ED_LZ_Employee] successful")
+
 
 def generated_sql(r01, is1061):
     '''
@@ -143,9 +152,6 @@ def insert_sql(table, is_hp,cursor):
     column = "Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date,Modify_Timestamp,Is_HP,Update_GMT_Timestamp"
     HP_Expected_End_Date = "null" if is_hp else "?"
     sql = f"insert into [IT_OPS].[ED_LZ_Employee]({column}) values(?,?,?,?,?,?,{HP_Expected_End_Date},?,?,{is_hp},getdate())"
-    conn_info = "DRIVER={ODBC Driver 13 for SQL Server};DATABASE="+database+";SERVER="+server_name+";UID=" + \
-        user_name+";PWD="+user_password+";"
-    cursor.fast_executemany = True
     # 批量插入
     try:
         logger.info(f"insert into number {len(table)}")
@@ -155,9 +161,8 @@ def insert_sql(table, is_hp,cursor):
         logger.info(f"Insertion successful number {len(table)}")
     except:
         logger.info(f"Insertion error:insertion failed")
-    finally:
         cursor.close()
-        cnxn.close()
+    finally:
         logger.info("Close the connection")
 
 
@@ -221,41 +226,48 @@ def main():
 
 def compare(cursor):
     global logger
-    sql = f"insert into [ED_Dim_Employee] values(?,?,?,?,?,?,?,?,?,?,?)"
-    cursor.execute('''SELECT Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date
-                    FROM (
-                        SELECT * FROM ED_LZ_Employee
-                        UNION ALL
-                        SELECT * FROM ED_Dim_Employee
-                    ) tbl
-                    GROUP BY 
-                    Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date
-                    HAVING count(*) = 1
-                    ORDER BY Worker_ID;''')
-    newdata = list(cursor.fetchall())
-    if len(newdata)==0:
-        logger.info("no change")
-        return
-    change_worker_id = set()
-    lz_change = set()
-    for i in range(len(newdata)):
-        change_worker_id.add(newdata[i][0])
-    logger.info(f"change Worker_ID {str(change_worker_id)}")
-    cursor.execute(f'''select * from ED_LZ_Employee where Worker_ID in ('{"','".join(change_worker_id)}')''')
-    lz_compare = list(cursor.fetchall())
-    if len(lz_compare)>0:
-        for i in range(len(lz_compare)):
-            lz_change.add(lz_compare[i][0])
-        logger.info(f"delete ED_Dim_Employee Worker_ID{str(change_worker_id)}")
-        delete_dim = f'''delete ED_Dim_Employee where Worker_ID in ('{"','".join(list(change_worker_id))}')'''
-        cursor.execute(delete_dim)
-        logger.info(f"insert ED_Dim_Employee new Worker_ID{str(lz_compare)}")
-        cursor.executemany(sql,lz_compare)
+    cursor.execute("select top 1 * from [IT_OPS].[ED_Dim_Employee]")
+    if len(list(cursor.fetchall()))>0:
+        sql = f"insert into [IT_OPS].[ED_Dim_Employee] values(?,?,?,?,?,?,?,?,?,?,?)"
+        cursor.execute('''SELECT Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date
+                        FROM (
+                            SELECT * FROM [IT_OPS].[ED_LZ_Employee]
+                            UNION ALL
+                            SELECT * FROM [IT_OPS].[ED_Dim_Employee]
+                        ) tbl
+                        GROUP BY 
+                        Worker_ID,Email_Address,NT_User_Domain_ID,HP_Start_Date,HP_Status,CN,HP_Expected_End_Date,HP_Termination_Date
+                        HAVING count(*) = 1
+                        ORDER BY Worker_ID;''')
+        newdata = list(cursor.fetchall())
+        if len(newdata)==0:
+            logger.info("no change")
+            return
+        change_worker_id = set()
+        for i in range(len(newdata)):
+            change_worker_id.add(newdata[i][0])
+        logger.info(f"change Worker_ID {str(change_worker_id)}")
+        cursor.execute("select Worker_ID from [IT_OPS].ED_Dim_Employee where Worker_ID not in (select Worker_ID from [IT_OPS].ED_LZ_Employee)")
+        dim_delete_id = list(cursor.fetchall())
+        delete_id = set()
+        [delete_id.add(dim_delete_id[i][0]) for i in range(len(dim_delete_id))]
+        logger.info(f"lz delete Worker_ID{delete_id}")
+        alter_add_id = change_worker_id-delete_id
+        if len(alter_add_id)>0:
+            cursor.execute(f'''select * from [IT_OPS].[ED_LZ_Employee] where Worker_ID in ('{"','".join(alter_add_id)}')''')
+            lz_compare = list(cursor.fetchall())
+            logger.info(f"delete [IT_OPS].ED_Dim_Employee Worker_ID{str(alter_add_id)}")
+            delete_dim = f'''delete [IT_OPS].ED_Dim_Employee where Worker_ID in ('{"','".join(alter_add_id)}')'''
+            cursor.execute(delete_dim)
+            logger.info(f"insert [IT_OPS].ED_Dim_Employee new Worker_ID{str(alter_add_id)}")
+            cursor.executemany(sql,lz_compare)
+        cursor.commit()
     else:
-        logger.info(f"delete ED_Dim_Employee Worker_ID{str(change_worker_id)}")
-        delete_dim = f'''delete ED_Dim_Employee where Worker_ID in ('{"','".join(list(change_worker_id))}')'''
-        cursor.execute(delete_dim)
-    cursor.commit()
+        logger.info("[IT_OPS].ED_Dim_Employee no data")
+        logger.info("insert into [IT_OPS].ED_Dim_Employee select  * from [IT_OPS].[ED_LZ_Employee]")
+        cursor.execute("insert into [IT_OPS].ED_Dim_Employee select  * from [IT_OPS].[ED_LZ_Employee]")
+        cursor.commit()
+        
 
 
 if __name__ == "__main__":

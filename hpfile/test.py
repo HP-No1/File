@@ -4,7 +4,7 @@
 @Author: qi-you
 @Date: 2020-03-18 16:23:58
 @LastEditors: qi-you
-@LastEditTime: 2020-03-23 20:51:57
+@LastEditTime: 2020-03-26 19:02:53
 @Descripttion:
 '''
 
@@ -14,7 +14,6 @@ import time
 import pandas as pd
 from pandas import DataFrame
 from datetime import datetime
-import pyodbc
 import configparser
 import uuid
 import os
@@ -117,9 +116,9 @@ def main():
               "Shippable_CO_Datetime",
               "Requested_Delivery_Datetime",
               "Order_Line",
-              "LOF_Net_Qty",
-              "LOF_Ship_Qty",
-              "LOF_Miss_Qty",
+              "LOF-Net_Qty",
+              "LOF-Ship_Qty",
+              "LOF-Miss_Qty",
               "Shipping_Condition",
               "Order_Type",
               "Order_Reason",
@@ -159,39 +158,122 @@ def main():
               "KEY"]
     read_config('config.ini')
     df = pd.read_excel(path, sheet_name=sheet_name, names=column)
+    for index in range(df.index.stop):
+        df['KEY'][index] = str(df['Order_No'][index])+"-"+str(df['Part_No'][index]) + \
+            "-"+str(df['Order_Line'][index])+'-' + \
+            str(df['Transaction_Date'][index])
     engine = create_engine(
         f"mssql+pyodbc://{user_name}:{user_password}@{server_name}/{database_name}?driver={driver}", encoding='utf-8', fast_executemany=True)
     df.to_sql(name='XQY_TEST2', con=engine,
               if_exists='append', schema='IT_OPS', index=False, chunksize=1000)
+    if len(engine.execute('select * from IT_OPS.XQY_TGT_TEST2').fetchall()) == 0:
+        engine.execute('''insert into IT_OPS.XQY_TGT_TEST2 select [Global_Region],
+                    [Transaction_Date],
+                    [CFA_Code],
+                    [Business_Process_Desc],
+                    [Shipping_Plant],
+                    [Country_Desc],
+                    [Part_No],
+                    [Order_No],
+                    [PGI_DATE_TIME],
+                    [Order_Line_Create_Datetime],
+                    [Pickable_CO_Datetime],
+                    [Shippable_CO_Datetime],
+                    [Requested_Delivery_Datetime],
+                    [Order_Line],
+                    [LOF-Net_Qty],
+                    [LOF-Ship_Qty],
+                    [LOF-Miss_Qty],
+                    [Shipping_Condition],
+                    [Order_Type],
+                    [Order_Reason],
+                    [WFM_Case_ID],
+                    [HWPL_Code],
+                    [Function_Group_Code],
+                    [Miss_Code],
+                    [Delivery_Priority],
+                    [Ship_To_Code],
+                    [Ship_To_Customer_Name],
+                    [Created_by],
+                    [Product],
+                    [Sub_Title],
+                    [Case_Otc],
+                    [Sub_Otc],
+                    [Customer_Name],
+                    [Address],
+                    [Address2],
+                    [State],
+                    [Owner],
+                    [Miss_root_cause_group],
+                    [Miss_root_cause],
+                    [Notes] from IT_OPS.XQY_TGT_TEST2
+                    ''')
+    
+    # if len(list(engine.fetchall())) ==0:
+    #     print("no")
     end = time.time()
     runtime = end-starttime
     logger.info(f"Running time:{runtime}")
 
 
 if __name__ == "__main__":
-   
-    # read_config("config.ini")
-    main()
-    # df = pd.read_excel(path, sheet_name=sheet_name)
-    # columnlist = [column for column in df]
-    # data = {}
-    
-    # for column in columnlist:
-    #     i = 0
-    #     map = ''
-    #     for v in df[column]:
-    #         # print(len(v))
-    #         # break
-    #         if len(str(v))>i:
-    #             i = len(str(v))
-    #             map= v
-    #     data.setdefault(column+str(i),map)
 
-    # #     # break
-    # print(data)
-    # for i in maxdata:
-    #     print(len(str(i)))
-    # maxdata.to_csv("max_column1.csv")
-    # os.system(r"net use E: \\ZHOUYIS3\Users\ZhouYiS\Desktop\ExcelCompare_jar")
+    # read_config('config.ini')
+    main()
     # except Exception as e:
     #     logger.error(e)
+    # df.row
+
+    # df = pd.read_excel(r'.\file\table.xlsx', sheet_name="Sheet1",converters ={'Lenght':int})
+    # df.iloc[a,3]
+    # for s in list(df[0]):
+    # a = df.loc[df['Column Name']==s].index.values[0]
+    # print(s.replace(" ","_")+f" nvarchar({df.iloc[a,3]}) null,")
+    # tag = [0, 1, 2, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+    #        23, 24, 25, 26, 27, 28, 30, 39, 42, 43, 44, 46, 47, 48, 49, 53, 51, 52, 54]
+    # column1 = ['Global_Region',
+    #           'Transaction_Date',
+    #           'CFA_Code',
+    #           'Business_Process_Desc',
+    #           'Shipping_Plant',
+    #           'Country_Desc',
+    #           'Part_No',
+    #           'Order_No',
+    #           'PGI_DATE_TIME',
+    #           'Order_Line_Create_Datetime',
+    #           'Pickable_CO_Datetime',
+    #           'Shippable_CO_Datetime',
+    #           'Requested_Delivery_Datetime',
+    #           'Order_Line',
+    #           'LOF-Net_Qty',
+    #           'LOF-Ship_Qty',
+    #           'LOF-Miss_Qty',
+    #           'Shipping_Condition',
+    #           'Order_Type',
+    #           'Order_Reason',
+    #           'WFM_Case_ID',
+    #           'HWPL_Code',
+    #           'Function_Group_Code',
+    #           'Miss_Code',
+    #           'Delivery_Priority',
+    #           'Ship_To_Code',
+    #           'Ship_To_Customer_Name',
+    #           'Created_by',
+    #           'Product',
+    #           'Sub_Title',
+    #           'Case_Otc',
+    #           'Sub_Otc',
+    #           'Customer_Name',
+    #           'Address',
+    #           'Address2',
+    #           'State',
+    #           'Owner',
+    #           'Miss_root_cause_group',
+    #           'Miss_root_cause',
+    #           'Notes']
+    # df = pd.read_excel(path, sheet_name=sheet_name, names=column, nrows=3)
+    # for index in range(df.index.stop):
+    #     df['KEY'][index] = str(df['Order_No'][index])+"-"+str(df['Part_No'][index]) + \
+    #         "-"+str(df['Order_Line'][index])+'-' + \
+    #         str(df['Transaction_Date'][index])
+    # print(df)
